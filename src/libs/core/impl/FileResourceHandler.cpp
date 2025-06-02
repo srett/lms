@@ -26,24 +26,30 @@
 
 namespace lms::core
 {
-    std::unique_ptr<IResourceHandler> createFileResourceHandler(const std::filesystem::path& path, std::string_view mimeType)
+    std::unique_ptr<IResourceHandler> createFileResourceHandler(std::ifstream ifs, std::string_view mimeType)
     {
-        return std::make_unique<FileResourceHandler>(path, mimeType.empty() ? getMimeType(path.extension()) : mimeType);
+        return std::make_unique<FileResourceHandler>(std::move(ifs), mimeType);
     }
 
-    FileResourceHandler::FileResourceHandler(const std::filesystem::path& path, std::string_view mimeType)
-        : _mimeType{ mimeType }
-        , _ifs{ path, std::ios::in | std::ios::binary }
+    std::unique_ptr<IResourceHandler> createFileResourceHandler(const std::filesystem::path& path, std::string_view mimeType)
     {
-        if (!_ifs)
-            LMS_LOG(UTILS, ERROR, "Cannot open file stream for " << path);
+        std::ifstream ifs{ path, std::ios::in | std::ios::binary };
+
+        if (!ifs) // Do not throw or bail out, so we can serve a 404
+            LMS_LOG(UTILS, ERROR, "Cannot open " << path << " for serving client");
         else
-        {
-            _ifs.seekg(0, std::ios::end);
-            if (!_ifs.fail())
-                _fileSize = static_cast<::uint64_t>(_ifs.tellg());
-            LMS_LOG(UTILS, DEBUG, "File " << path << ", fileSize = " << _fileSize);
-        }
+            LMS_LOG(UTILS, DEBUG, "Opened " << path << " for serving client");
+        return std::make_unique<FileResourceHandler>(std::move(ifs), mimeType.empty() ? getMimeType(path.extension()) : mimeType);
+    }
+
+    FileResourceHandler::FileResourceHandler(std::ifstream ifs, std::string_view mimeType)
+        : _mimeType{ mimeType }
+        , _ifs{ std::move(ifs) }
+    {
+        _ifs.seekg(0, std::ios::end);
+        if (_ifs)
+            _fileSize = static_cast<::uint64_t>(_ifs.tellg());
+        LMS_LOG(UTILS, DEBUG, "FileSize = " << _fileSize);
     }
 
     Wt::Http::ResponseContinuation* FileResourceHandler::processRequest(const Wt::Http::Request& request, Wt::Http::Response& response)

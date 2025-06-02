@@ -27,5 +27,7 @@
 
 namespace lms::core
 {
+    std::unique_ptr<IResourceHandler> createFileResourceHandler(std::ifstream ifs, std::string_view mimeType);
+
     std::unique_ptr<IResourceHandler> createFileResourceHandler(const std::filesystem::path& path, std::string_view mimeType = "");
 }
