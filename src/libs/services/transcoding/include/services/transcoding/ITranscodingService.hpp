@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <boost/asio/io_context.hpp>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -72,5 +73,5 @@ namespace lms::transcoding
         virtual std::unique_ptr<core::IResourceHandler> createResourceHandler(const InputParameters& inputParameters, const OutputParameters& outputParameters, bool estimateContentLength) = 0;
     };
 
-    std::unique_ptr<ITranscodingService> createTranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager);
+    std::unique_ptr<ITranscodingService> createTranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext);
 } // namespace lms::transcoding

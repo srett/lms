@@ -26,7 +26,7 @@ namespace lms::transcoding
     class TranscodingService : public ITranscodingService
     {
     public:
-        explicit TranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager);
+        explicit TranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, bool useCaching);
         ~TranscodingService() override;
 
         TranscodingService(const TranscodingService&) = delete;
@@ -37,5 +37,7 @@ namespace lms::transcoding
 
         db::IDb& _db;
         core::IChildProcessManager& _childProcessManager;
+        boost::asio::io_context& _ioContext;
+        bool _useCaching;
     };
 } // namespace lms::transcoding

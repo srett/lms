@@ -26,6 +26,7 @@
 #include "database/objects/Track.hpp"
 
 #include "TranscodingResourceHandler.hpp"
+#include "core/IConfig.hpp"
 
 namespace lms::transcoding
 {
@@ -43,14 +44,34 @@ namespace lms::transcoding
         }
     } // namespace
 
-    std::unique_ptr<ITranscodingService> createTranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager)
+    std::unique_ptr<ITranscodingService> createTranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext)
     {
-        return std::make_unique<TranscodingService>(db, childProcessManager);
+        auto* config = core::Service<core::IConfig>::get();
+        auto size = config->getULong("transcode-cache-size", 0);
+        bool useCaching{ false };
+
+        LMS_LOG(TRANSCODING, INFO, "Configured transcoding cache size: " << size << "MiB");
+        if (size > 0)
+        {
+            // TODO: Should be size of cache in MB, auto-clean (LRU), write worker
+            const std::filesystem::path cachePath{ config->getPath("working-dir", "/var/lms") / "cache" / "transcode" };
+            std::error_code ec;
+            std::filesystem::create_directories(cachePath, ec);
+            if (!ec)
+                LMS_LOG(TRANSCODING, WARNING, "Creating " << cachePath << " failed, disabling");
+            else
+                useCaching = true;
+        }
+
+        return std::make_unique<TranscodingService>(db, childProcessManager, ioContext, useCaching);
+
     }
 
-    TranscodingService::TranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager)
+    TranscodingService::TranscodingService(db::Db& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, bool useCaching)
         : _db{ db }
         , _childProcessManager(childProcessManager)
+        , _ioContext{ ioContext }
+        , _useCaching{ useCaching }
     {
         LMS_LOG(TRANSCODING, INFO, "Service started!");
     }

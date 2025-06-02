@@ -425,7 +425,7 @@ namespace lms
             core::Service<recommendation::IRecommendationService> recommendationService{ recommendation::createRecommendationService(*database) };
             core::Service<recommendation::IPlaylistGeneratorService> playlistGeneratorService{ recommendation::createPlaylistGeneratorService(*database, *recommendationService) };
             core::Service<scanner::IScannerService> scannerService{ scanner::createScannerService(*database) };
-            core::Service<transcoding::ITranscodingService> transcodingService{ transcoding::createTranscodingService(*database, *childProcessManagerService) };
+            core::Service<transcoding::ITranscodingService> transcodingService{ transcoding::createTranscodingService(*database, *childProcessManagerService, ioContext) };
 
             scannerService->getEvents().scanComplete.connect([&] {
                 // Flush cover cache even if no changes:
