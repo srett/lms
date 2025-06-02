@@ -199,21 +199,7 @@ namespace lms::av
 
     std::string_view Transcoder::getOutputMimeType() const
     {
-        switch (_outputParams.format)
-        {
-        case OutputFormat::MP3:
-            return "audio/mpeg";
-        case OutputFormat::OGG_OPUS:
-            return "audio/opus";
-        case OutputFormat::MATROSKA_OPUS:
-            return "audio/x-matroska";
-        case OutputFormat::OGG_VORBIS:
-            return "audio/ogg";
-        case OutputFormat::WEBM_VORBIS:
-            return "audio/webm";
-        }
-
-        return "application/octet-stream"; // default, should not happen
+        return _outputParams.formatToMimeType();
     }
 
     bool Transcoder::finished() const

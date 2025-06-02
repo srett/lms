@@ -42,13 +42,32 @@ namespace lms::av
         MATROSKA_OPUS,
         OGG_VORBIS,
         WEBM_VORBIS,
+        INVALID_FORMAT,
     };
 
     struct OutputParameters
     {
-        OutputFormat format;
+        OutputFormat format{ OutputFormat::INVALID_FORMAT };
         std::size_t bitrate{ 128'000 };
         bool stripMetadata{ true };
+        std::string_view formatToMimeType() const
+        {
+            switch (format)
+            {
+            case OutputFormat::MP3:
+                return "audio/mpeg";
+            case OutputFormat::OGG_OPUS:
+                return "audio/opus";
+            case OutputFormat::MATROSKA_OPUS:
+                return "audio/x-matroska";
+            case OutputFormat::OGG_VORBIS:
+                return "audio/ogg";
+            case OutputFormat::WEBM_VORBIS:
+                return "audio/webm";
+            }
+
+            return "application/octet-stream"; // default, should not happen
+        }
     };
 
     class ITranscoder
