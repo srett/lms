@@ -1,7 +1,11 @@
 add_library(lmstranscoding STATIC
 	impl/TranscodingResourceHandler.cpp
 	impl/TranscodingService.cpp
-	)
+        impl/CachingTranscoderSession.cpp
+        impl/CachingTranscoderSession.hpp
+		impl/CachingTranscoderClientHandler.cpp
+		impl/CachingTranscoderClientHandler.hpp
+)
 
 target_include_directories(lmstranscoding INTERFACE
 	include

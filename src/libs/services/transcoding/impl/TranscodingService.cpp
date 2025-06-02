@@ -19,6 +19,8 @@
 
 #include "TranscodingService.hpp"
 
+#include <utility>
+
 #include "av/ITranscoder.hpp"
 #include "core/ILogger.hpp"
 #include "database/IDb.hpp"
@@ -26,6 +28,7 @@
 #include "database/objects/Track.hpp"
 
 #include "TranscodingResourceHandler.hpp"
+#include "CachingTranscoderSession.hpp"
 #include "core/IConfig.hpp"
 
 namespace lms::transcoding
@@ -48,30 +51,31 @@ namespace lms::transcoding
     {
         auto* config = core::Service<core::IConfig>::get();
         auto size = config->getULong("transcode-cache-size", 0);
-        bool useCaching{ false };
+        std::filesystem::path cachePath{};
 
         LMS_LOG(TRANSCODING, INFO, "Configured transcoding cache size: " << size << "MiB");
         if (size > 0)
         {
             // TODO: Should be size of cache in MB, auto-clean (LRU), write worker
-            const std::filesystem::path cachePath{ config->getPath("working-dir", "/var/lms") / "cache" / "transcode" };
+            cachePath = config->getPath("working-dir", "/var/lms") / "cache" / "transcode";
             std::error_code ec;
             std::filesystem::create_directories(cachePath, ec);
-            if (!ec)
+            if (ec)
+            {
                 LMS_LOG(TRANSCODING, WARNING, "Creating " << cachePath << " failed, disabling");
-            else
-                useCaching = true;
+                cachePath.clear();
+            }
         }
 
-        return std::make_unique<TranscodingService>(db, childProcessManager, ioContext, useCaching);
+        return std::make_unique<TranscodingService>(db, childProcessManager, ioContext, cachePath);
 
     }
 
-    TranscodingService::TranscodingService(db::Db& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, bool useCaching)
+    TranscodingService::TranscodingService(db::Db& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, std::filesystem::path cachePath)
         : _db{ db }
         , _childProcessManager(childProcessManager)
         , _ioContext{ ioContext }
-        , _useCaching{ useCaching }
+        , _cachePath{ std::move(cachePath) }
     {
         LMS_LOG(TRANSCODING, INFO, "Service started!");
     }
@@ -81,7 +85,7 @@ namespace lms::transcoding
         LMS_LOG(TRANSCODING, INFO, "Service stopped!");
     }
 
-    std::unique_ptr<core::IResourceHandler> TranscodingService::createResourceHandler(const InputParameters& inputParameters, const OutputParameters& outputParameters, bool estimateContentLength)
+    std::shared_ptr<core::IResourceHandler> TranscodingService::createResourceHandler(const InputParameters& inputParameters, const OutputParameters& outputParameters, bool estimateContentLength)
     {
         av::InputParameters avInputParams;
         std::optional<std::size_t> estimatedContentLength;
@@ -99,6 +103,13 @@ namespace lms::transcoding
 
             if (estimateContentLength)
                 estimatedContentLength = doEstimateContentLength(outputParameters.bitrate, track->getDuration());
+        }
+
+        if (!_cachePath.empty() && inputParameters.offset.count() == 0)
+        {
+            auto ref{ createCachingTranscodingResourceHandler(avInputParams, toAv(outputParameters), estimatedContentLength, _ioContext, _cachePath) };
+            if (ref)
+                return ref;
         }
 
         return std::make_unique<TranscodingResourceHandler>(avInputParams, toAv(outputParameters), estimatedContentLength);

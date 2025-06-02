@@ -31,7 +31,7 @@ namespace lms::core
     class FileResourceHandler final : public IResourceHandler
     {
     public:
-        FileResourceHandler(std::ifstream ifs, std::string_view mimeType);
+        FileResourceHandler(const std::filesystem::path& filePath, std::string_view mimeType);
 
     private:
         Wt::Http::ResponseContinuation* processRequest(const Wt::Http::Request& request, Wt::Http::Response& response) override;

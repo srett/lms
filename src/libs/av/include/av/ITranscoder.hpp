@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "core/XxHash3.hpp"
+
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -33,6 +35,13 @@ namespace lms::av
         std::filesystem::path file;             // Path to the input file
         std::chrono::milliseconds offset{};     // Offset in the input file to start transcoding from
         std::optional<std::size_t> streamIndex; // Index of the stream to be transcoded (select "best" audio stream if not set)
+        uint64_t hash() const
+        {
+            const auto str{ file.string() };
+            return core::xxHash3_64({ reinterpret_cast<const std::byte*>(str.data()), str.size() })
+                 ^ (static_cast<uint64_t>(offset.count()) << 16)
+                 ^ static_cast<uint64_t>(streamIndex ? *streamIndex : UINT64_MAX);
+        }
     };
 
     enum class OutputFormat
@@ -50,6 +59,12 @@ namespace lms::av
         OutputFormat format{ OutputFormat::INVALID_FORMAT };
         std::size_t bitrate{ 128'000 };
         bool stripMetadata{ true };
+        uint64_t hash() const
+        {
+            return (static_cast<uint64_t>(format) << 32)
+                 ^ bitrate
+                 ^ static_cast<uint64_t>(stripMetadata);
+        }
         std::string_view formatToMimeType() const
         {
             switch (format)
@@ -64,6 +79,8 @@ namespace lms::av
                 return "audio/ogg";
             case OutputFormat::WEBM_VORBIS:
                 return "audio/webm";
+            case OutputFormat::INVALID_FORMAT:
+                break;
             }
 
             return "application/octet-stream"; // default, should not happen

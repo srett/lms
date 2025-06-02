@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "av/ITranscoder.hpp"
 #include "services/transcoding/ITranscodingService.hpp"
 
 namespace lms::transcoding
@@ -26,18 +27,18 @@ namespace lms::transcoding
     class TranscodingService : public ITranscodingService
     {
     public:
-        explicit TranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, bool useCaching);
+        explicit TranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, std::filesystem::path cachePath);
         ~TranscodingService() override;
 
         TranscodingService(const TranscodingService&) = delete;
         TranscodingService& operator=(const TranscodingService&) = delete;
 
     private:
-        std::unique_ptr<core::IResourceHandler> createResourceHandler(const InputParameters& inputParameters, const OutputParameters& outputParameters, bool estimateContentLength) override;
+        std::shared_ptr<core::IResourceHandler> createResourceHandler(const InputParameters& inputParameters, const OutputParameters& outputParameters, bool estimateContentLength) override;
 
         db::IDb& _db;
         core::IChildProcessManager& _childProcessManager;
         boost::asio::io_context& _ioContext;
-        bool _useCaching;
+        std::filesystem::path _cachePath;
     };
 } // namespace lms::transcoding
