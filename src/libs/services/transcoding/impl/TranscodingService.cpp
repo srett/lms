@@ -71,7 +71,7 @@ namespace lms::transcoding
 
     }
 
-    TranscodingService::TranscodingService(db::Db& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, std::filesystem::path cachePath)
+    TranscodingService::TranscodingService(db::IDb& db, core::IChildProcessManager& childProcessManager, boost::asio::io_context& ioContext, std::filesystem::path cachePath)
         : _db{ db }
         , _childProcessManager(childProcessManager)
         , _ioContext{ ioContext }

@@ -63,7 +63,6 @@ namespace lms::transcoding
        bool _headerSet{};
        std::atomic<std::uint64_t> _currentFileLength{};
        std::atomic<std::uint64_t> _finalFileLength{}; // Zero if not known yet
-       Wt::Http::ResponseContinuation* _continuation{};
        std::uint64_t _nextOffset{};
        std::uint64_t _endOffset{ UINT64_MAX };
        boost::asio::steady_timer _signal;

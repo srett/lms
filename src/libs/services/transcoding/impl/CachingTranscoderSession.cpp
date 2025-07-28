@@ -53,10 +53,11 @@ namespace lms::transcoding
            return subDir / oss.str();
        }
 
-       void removeJobFromMap(uint64_t hash)
+       void removeJobFromMap(CachingTranscoderSession* sess)
        {
            std::lock_guard<std::mutex> const guard{ jobMutex };
-           if (!jobs.erase(hash))
+           sess->renameTmpFile();
+           if (!jobs.erase(sess->hash()))
                LMS_LOG(TRANSCODING, DEBUG, "remove Job: Not found!");
        }
    } // namespace
@@ -132,7 +133,8 @@ namespace lms::transcoding
    }
 
    CachingTranscoderSession::CachingTranscoderSession(uint64_t hash, const std::filesystem::path &file, const av::InputParameters& inputParameters, const av::OutputParameters& outputParameters)
-       : _fs{ file, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc }
+       : _destFile{ file }
+       , _fs{ std::filesystem::path(file) += ".tmp", std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc }
        , _transcoder{ av::createTranscoder(inputParameters, outputParameters) }
        , _jobHash{ hash }
    {
@@ -175,7 +177,7 @@ namespace lms::transcoding
        {
            LMS_LOG(TRANSCODING, DEBUG, "Caching transcoder job finished, bytes produced: " << _currentFileLength << ", clients left: " << _clients.size());
            notifyClients(CachingTranscoderClientHandler::DONE);
-           removeJobFromMap(_jobHash);
+           removeJobFromMap(this);
            return;
        }
 
@@ -231,4 +233,14 @@ namespace lms::transcoding
            _clients.clear();
        }
    }
+
+   void CachingTranscoderSession::renameTmpFile()
+   {
+       std::error_code ec;
+       std::filesystem::rename((std::filesystem::path(_destFile) += ".tmp"), _destFile, ec);
+       if (ec) {
+           LMS_LOG(TRANSCODING, DEBUG, "Cannot rename transcoded file " << _destFile << ": " << ec.message());
+       }
+   }
+
 } // namespace lms::transcoding

@@ -45,6 +45,10 @@ namespace lms::transcoding
 
        int64_t serveBytes(std::ostream &stream, uint64_t offset, int64_t len);
 
+       uint64_t hash() const { return _jobHash; }
+
+       void renameTmpFile();
+
    private:
        bool sourceGood() const { return _fs && _fs.good(); }
        void keepReading();
@@ -53,6 +57,7 @@ namespace lms::transcoding
        static constexpr std::size_t CHUNK_SIZE{ 262'144 };
        std::array<std::byte, CHUNK_SIZE> _buffer{};
        std::uint64_t _currentFileLength{};
+       std::filesystem::path _destFile;
        std::fstream _fs;
        std::mutex _fsMutex;
        std::unique_ptr<av::ITranscoder> _transcoder;

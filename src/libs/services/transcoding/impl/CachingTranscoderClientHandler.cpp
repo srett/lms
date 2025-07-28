@@ -90,7 +90,13 @@ namespace lms::transcoding
 
                response.setStatus(206);
                _nextOffset = ranges[0].firstByte();
-               _endOffset = ranges[0].lastByte() + 1;
+               if (ranges[0].lastByte() != UINT64_MAX) {
+                   // If we did not estimate the content length
+                   // and the client sent a range request with no upper limit (e.g. "0-"),
+                   // ranges[0].lastByte() would be UINT64_MAX - don't execute this
+                   // assignment then as it would overflow and set endOffset to 0
+                   _endOffset = ranges[0].lastByte() + 1;
+               }
 
                std::ostringstream contentRange;
                contentRange << "bytes " << ranges[0].firstByte() << "-"
@@ -164,16 +170,15 @@ namespace lms::transcoding
        {
            // We made progress, and there's still data ready in cache - can continue directly
            LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Continue directly");
-           _continuation = nullptr;
            return response.createContinuation();
        }
 
        // Need to wait for transcoder
        LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Wait for more data");
-       _continuation = response.createContinuation();
-       _continuation->waitForMoreData();
+       Wt::Http::ResponseContinuation* continuation{ response.createContinuation() };
+       continuation->waitForMoreData();
        _signal.expires_after(std::chrono::seconds(60));
-       _signal.async_wait([this](const boost::system::error_code& ec) {
+       _signal.async_wait([this, continuation](const boost::system::error_code& ec) {
            if (_dead)
                return;
            _signal.expires_after(std::chrono::seconds(60));
@@ -183,9 +188,9 @@ namespace lms::transcoding
                _dead = true;
                LMS_LOG(TRANSCODING, WARNING, "CACHE PROCESSOR: Client timer expired, this should not happen :>");
            }
-           this->_continuation->haveMoreData(); // Will end the request if we set _dead above
+           continuation->haveMoreData(); // Will end the request if we set _dead above
        });
-       return _continuation;
+       return continuation;
    }
 
 } // namespace lms::av::transcoding
