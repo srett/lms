@@ -50,6 +50,7 @@ namespace lms::transcoding
        {
            _signal.cancel();
            _dead = true;
+           _transcoder = nullptr;
            return false;
        }
        assert(currentFileLength >= _currentFileLength);
@@ -135,6 +136,7 @@ namespace lms::transcoding
            {
                // I/O Error
                _dead = true;
+               _transcoder = nullptr;
                return nullptr;
            }
        }
@@ -146,6 +148,7 @@ namespace lms::transcoding
                // No content length was sent, no range requested - just end this request
                LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: End of file, no content-length, finished");
                _dead = true;
+               _transcoder = nullptr;
                return nullptr;
            }
            // We promised the client there would be more data than there actually is - pad with zeros
@@ -161,6 +164,7 @@ namespace lms::transcoding
        {
            LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Range request of client fully satisfied");
            _dead = true;
+           _transcoder = nullptr;
            return nullptr;
        }
 
@@ -175,17 +179,19 @@ namespace lms::transcoding
 
        // Need to wait for transcoder
        LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Wait for more data");
+       auto self = shared_from_this();
        Wt::Http::ResponseContinuation* continuation{ response.createContinuation() };
        continuation->waitForMoreData();
        _signal.expires_after(std::chrono::seconds(60));
-       _signal.async_wait([this, continuation](const boost::system::error_code& ec) {
-           if (_dead)
+       _signal.async_wait([self, continuation](const boost::system::error_code& ec) {
+           if (self->_dead)
                return;
-           _signal.expires_after(std::chrono::seconds(60));
+           self->_signal.expires_after(std::chrono::seconds(60));
            if (ec != boost::asio::error::operation_aborted)
            {
                // This should never happen but let's see
-               _dead = true;
+               self->_dead = true;
+               self->_transcoder = nullptr;
                LMS_LOG(TRANSCODING, WARNING, "CACHE PROCESSOR: Client timer expired, this should not happen :>");
            }
            continuation->haveMoreData(); // Will end the request if we set _dead above

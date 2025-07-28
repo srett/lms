@@ -111,7 +111,7 @@ namespace lms::transcoding
            }
            // TODO: Maybe check if there's enough space left on disk, and fall back to the old transcoder otherwise
            LMS_LOG(TRANSCODING, DEBUG, "Creating shared caching transcoder");
-           job = std::make_shared<CachingTranscoderSession>(hash, filePath, inputParameters, outputParameters);
+           job = CachingTranscoderSession::newSession(hash, filePath, inputParameters, outputParameters);
            jobs.emplace(hash, job);
        }
        if (job)
@@ -119,6 +119,13 @@ namespace lms::transcoding
        // Something went wrong; fall back to plain old transcoding handler
        LMS_LOG(TRANSCODING, INFO, "Falling back to simple transcoder");
        return {};
+   }
+
+   std::shared_ptr<CachingTranscoderSession> CachingTranscoderSession::newSession(uint64_t hash, const std::filesystem::path &file, const av::InputParameters& inputParameters, const av::OutputParameters& outputParameters)
+   {
+       auto job = std::make_shared<CachingTranscoderSession>(hash, file, inputParameters, outputParameters);
+       job->keepReading();
+       return job;
    }
 
    std::shared_ptr<core::IResourceHandler> CachingTranscoderSession::newClient(const std::optional<size_t>& estimatedContentLength, boost::asio::io_context& ioContext)
@@ -139,7 +146,6 @@ namespace lms::transcoding
        , _jobHash{ hash }
    {
        LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderSession instances: " << ++instCount);
-       keepReading();
    }
 
    CachingTranscoderSession::~CachingTranscoderSession()
@@ -181,28 +187,32 @@ namespace lms::transcoding
            return;
        }
 
-       _transcoder->asyncRead(_buffer.data(), _buffer.size(), [this](std::size_t nbBytesRead) {
+       auto weak_self = weak_from_this();
+       _transcoder->asyncRead(_buffer.data(), _buffer.size(), [weak_self](std::size_t nbBytesRead) {
+           auto self = weak_self.lock();
+           if (!self)
+               return;
            LMS_LOG(TRANSCODING, DEBUG, "Have " << nbBytesRead << " more bytes to send back and cache");
            if (nbBytesRead)
            {
                bool good;
                {
-                   std::lock_guard<std::mutex> const guard{ _fsMutex };
-                   _fs.seekp(_currentFileLength, std::ios::beg);
-                   _fs.write(reinterpret_cast<const char*>(_buffer.data()), nbBytesRead);
-                   _fs.flush();
-                   good = _fs.good();
+                   std::lock_guard<std::mutex> const guard{ self->_fsMutex };
+                   self->_fs.seekp(self->_currentFileLength, std::ios::beg);
+                   self->_fs.write(reinterpret_cast<const char*>(self->_buffer.data()), nbBytesRead);
+                   self->_fs.flush();
+                   good = self->_fs.good();
                }
                if (!good)
                {
                    LMS_LOG(TRANSCODING, WARNING, "Error writing to transcoded cache file");
-                   notifyClients(CachingTranscoderClientHandler::ERROR);
+                   self->notifyClients(CachingTranscoderClientHandler::ERROR);
                    return;
                }
            }
-           _currentFileLength += nbBytesRead;
-           notifyClients(CachingTranscoderClientHandler::WORKING);
-           this->keepReading();
+           self->_currentFileLength += nbBytesRead;
+           self->notifyClients(CachingTranscoderClientHandler::WORKING);
+           self->keepReading();
        });
    }
 

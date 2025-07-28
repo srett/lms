@@ -33,7 +33,7 @@ namespace lms::transcoding
 {
    class CachingTranscoderSession;
 
-   class CachingTranscoderClientHandler : public core::IResourceHandler
+   class CachingTranscoderClientHandler : public core::IResourceHandler, public std::enable_shared_from_this<CachingTranscoderClientHandler>
    {
    public:
        enum UpdateStatus

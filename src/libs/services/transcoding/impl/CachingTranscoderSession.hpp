@@ -39,6 +39,7 @@ namespace lms::transcoding
        CachingTranscoderSession(CachingTranscoderSession&&) = delete;
        CachingTranscoderSession& operator=(CachingTranscoderSession&&) = delete;
 
+       static std::shared_ptr<CachingTranscoderSession> newSession(uint64_t hash, const std::filesystem::path &file, const av::InputParameters& inputParameters, const av::OutputParameters& outputParameters);
        std::shared_ptr<core::IResourceHandler> newClient(const std::optional<size_t>& estimateContentLength, boost::asio::io_context& ioContext);
 
        std::string_view getOutputMimeType() const { return _transcoder->getOutputMimeType(); }
