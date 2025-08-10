@@ -52,13 +52,13 @@ namespace lms::transcoding
 
        bool update(std::uint64_t currentFileLength, UpdateStatus status);
 
-       void abort() override { _dead = true; }
+       void abort() override { _transcoder.store(nullptr); }
+       bool isDead() const { return !_transcoder.load(); }
 
    private:
        Wt::Http::ResponseContinuation* processRequest(const Wt::Http::Request& request, Wt::Http::Response& response) override;
 
-       std::shared_ptr<CachingTranscoderSession> _transcoder;
-       bool _dead{};
+       std::atomic<std::shared_ptr<CachingTranscoderSession>> _transcoder;
        std::optional<size_t> _estimatedContentLength;
        bool _headerSet{};
        std::atomic<std::uint64_t> _currentFileLength{};

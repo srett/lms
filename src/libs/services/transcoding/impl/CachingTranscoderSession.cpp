@@ -33,7 +33,7 @@ namespace lms::transcoding
        // TODO: Configurable? E.g. allowed-transcoding-bitrates = "32 64 128 ...."
        const std::vector<std::size_t> ALLOWED_BITRATES{320'000, 256'000, 192'000, 160'000, 128'000, 96'000, 64'000, 32'000};
 
-       std::atomic<size_t> instCount{}; // XXX: Just during development to find memory leaks through dangling/cyclic references
+       std::atomic<size_t> instCountTS{}; // XXX: Just during development to find memory leaks through dangling/cyclic references
 
        std::unordered_map<uint64_t, std::shared_ptr<CachingTranscoderSession>> jobs{};
        std::mutex jobMutex{};
@@ -145,12 +145,12 @@ namespace lms::transcoding
        , _transcoder{ av::createTranscoder(inputParameters, outputParameters) }
        , _jobHash{ hash }
    {
-       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderSession instances: " << ++instCount);
+       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderSession instances: " << ++instCountTS);
    }
 
    CachingTranscoderSession::~CachingTranscoderSession()
    {
-       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderSession instances: " << --instCount);
+       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderSession instances: " << --instCountTS);
    }
 
    int64_t CachingTranscoderSession::serveBytes(std::ostream& stream, uint64_t offset, int64_t len)
@@ -178,7 +178,6 @@ namespace lms::transcoding
 
    void CachingTranscoderSession::keepReading()
    {
-       LMS_LOG(TRANSCODING, DEBUG, "keepReading");
        if (_transcoder->finished())
        {
            LMS_LOG(TRANSCODING, DEBUG, "Caching transcoder job finished, bytes produced: " << _currentFileLength << ", clients left: " << _clients.size());

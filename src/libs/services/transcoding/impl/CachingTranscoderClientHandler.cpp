@@ -26,31 +26,30 @@
 namespace lms::transcoding
 {
 
-   static std::atomic<size_t> instCount{}; // XXX: Just during development to find memory leaks through dangling/cyclic references
+   static std::atomic<size_t> instCountCH{}; // XXX: Just during development to find memory leaks through dangling/cyclic references
 
    CachingTranscoderClientHandler::CachingTranscoderClientHandler(const std::shared_ptr<CachingTranscoderSession>& transcoder, const std::optional<size_t>& estimatedContentLength, boost::asio::io_context& ioContext)
        : _transcoder{ transcoder }
        , _estimatedContentLength{ estimatedContentLength }
        , _signal{ ioContext }
    {
-       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderClientHandler instances: " << ++instCount);
+       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderClientHandler instances: " << ++instCountCH);
    }
 
    CachingTranscoderClientHandler::~CachingTranscoderClientHandler()
    {
-       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderClientHandler instances: " << --instCount);
+       LMS_LOG(TRANSCODING, DEBUG, "CachingTranscoderClientHandler instances: " << --instCountCH);
    }
 
    bool CachingTranscoderClientHandler::update(std::uint64_t currentFileLength, UpdateStatus status)
    {
-       LMS_LOG(TRANSCODING, WARNING, "Client->update() when " << (_dead ? "DEAD" : "alive"));
-       if (_dead)
+       LMS_LOG(TRANSCODING, WARNING, "Client->update() when " << (isDead() ? "DEAD" : "alive"));
+       if (isDead())
            return false;
        if (status == UpdateStatus::ERROR)
        {
+           abort();
            _signal.cancel();
-           _dead = true;
-           _transcoder = nullptr;
            return false;
        }
        assert(currentFileLength >= _currentFileLength);
@@ -68,7 +67,8 @@ namespace lms::transcoding
 
    Wt::Http::ResponseContinuation* CachingTranscoderClientHandler::processRequest(const Wt::Http::Request& request, Wt::Http::Response& response)
    {
-       if (_dead)
+       auto transcoder{ _transcoder.load() }; // Get another ref as _transcoder = nullptr can be called from another thread
+       if (!transcoder)
            return nullptr;
        if (!_headerSet)
        {
@@ -119,24 +119,23 @@ namespace lms::transcoding
            if (_endOffset != UINT64_MAX)
                response.setContentLength(_endOffset - _nextOffset);
 
-           response.setMimeType(std::string{ _transcoder->getOutputMimeType() });
+           response.setMimeType(std::string{ transcoder->getOutputMimeType() });
        } // end init
 
-       int64_t bytesReady = static_cast<std::int64_t>(std::min<std::uint64_t>(_endOffset, _currentFileLength)) - _nextOffset;
+       const int64_t bytesReady = static_cast<std::int64_t>(std::min<std::uint64_t>(_endOffset, _currentFileLength)) - _nextOffset;
        int64_t bytesWritten{};
        if (bytesReady <= 0)
            LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Still have to wait for " << -bytesReady << " more transcoded bytes before being able to handle client");
        else
        {
-           bytesWritten = _transcoder->serveBytes(response.out(), _nextOffset, bytesReady);
+           bytesWritten = transcoder->serveBytes(response.out(), _nextOffset, bytesReady);
            LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Wrote " << bytesWritten << "/" << bytesReady << " bytes to client");
            if (bytesWritten >= 0)
                _nextOffset += bytesWritten;
            else
            {
                // I/O Error
-               _dead = true;
-               _transcoder = nullptr;
+               abort();
                return nullptr;
            }
        }
@@ -147,8 +146,7 @@ namespace lms::transcoding
            {
                // No content length was sent, no range requested - just end this request
                LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: End of file, no content-length, finished");
-               _dead = true;
-               _transcoder = nullptr;
+               abort();
                return nullptr;
            }
            // We promised the client there would be more data than there actually is - pad with zeros
@@ -163,8 +161,7 @@ namespace lms::transcoding
        if (_nextOffset >= _endOffset)
        {
            LMS_LOG(TRANSCODING, DEBUG, "CACHE PROCESSOR: Range request of client fully satisfied");
-           _dead = true;
-           _transcoder = nullptr;
+           abort();
            return nullptr;
        }
 
@@ -184,14 +181,13 @@ namespace lms::transcoding
        continuation->waitForMoreData();
        _signal.expires_after(std::chrono::seconds(60));
        _signal.async_wait([self, continuation](const boost::system::error_code& ec) {
-           if (self->_dead)
+           if (self->isDead())
                return;
            self->_signal.expires_after(std::chrono::seconds(60));
            if (ec != boost::asio::error::operation_aborted)
            {
                // This should never happen but let's see
-               self->_dead = true;
-               self->_transcoder = nullptr;
+               self->abort();
                LMS_LOG(TRANSCODING, WARNING, "CACHE PROCESSOR: Client timer expired, this should not happen :>");
            }
            continuation->haveMoreData(); // Will end the request if we set _dead above
